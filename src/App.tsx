@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { 
   Plus, Search, Trash2, Edit, Star, X, ChevronLeft, ChevronRight,
-  FolderPlus, ArrowRight, CornerDownRight
+  FolderPlus, ArrowRight, CornerDownRight, Minus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  loadConfig, saveConfig, extractIcon, launchApp, selectExecutable 
+  loadConfig, saveConfig, extractIcon, launchApp, selectExecutable,
+  getInstalledApps, minimizeWindow, InstalledApp
 } from "./services/tauri";
 import { AppConfig, Folder as FolderType, AppInfo } from "./types";
 import { FolderIcon, AVAILABLE_ICONS } from "./components/FolderIcon";
@@ -30,6 +31,13 @@ function App() {
   // Loading state
   const [loading, setLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Installed App Picker Modal states
+  const [isAppPickerOpen, setIsAppPickerOpen] = useState(false);
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [searchAppQuery, setSearchAppQuery] = useState("");
+  const [loadingApps, setLoadingApps] = useState(false);
+  const [targetFolderIdForNewApp, setTargetFolderIdForNewApp] = useState<string | null>(null);
 
   // Load config on mount
   useEffect(() => {
@@ -188,6 +196,68 @@ function App() {
     }
   };
 
+  const handleOpenAppPicker = async (folderId: string) => {
+    setTargetFolderIdForNewApp(folderId);
+    setIsAppPickerOpen(true);
+    setSearchAppQuery("");
+    setLoadingApps(true);
+    try {
+      const apps = await getInstalledApps();
+      setInstalledApps(apps);
+    } catch (err) {
+      console.error("Failed to load installed apps:", err);
+    } finally {
+      setLoadingApps(false);
+    }
+  };
+
+  const handleSelectAppFromList = async (app: InstalledApp) => {
+    if (!targetFolderIdForNewApp) return;
+    try {
+      let appIcon = "";
+      try {
+        appIcon = await extractIcon(app.path);
+      } catch (err) {
+        console.error("Failed to extract app icon, using default:", err);
+        // Default app icon (SVG representation)
+        appIcon = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%233b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>`;
+      }
+
+      const newApp: AppInfo = {
+        id: `app-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: app.name,
+        path: app.path,
+        icon: appIcon
+      };
+
+      const updatedFolders = config.folders.map(f => {
+        if (f.id === targetFolderIdForNewApp) {
+          return {
+            ...f,
+            apps: [...f.apps, newApp]
+          };
+        }
+        return f;
+      });
+
+      await updateConfig({
+        ...config,
+        folders: updatedFolders
+      });
+
+      setIsAppPickerOpen(false);
+    } catch (error) {
+      console.error("Failed to add application:", error);
+      alert("Gagal menambahkan aplikasi.");
+    }
+  };
+
+  const handleAddAppManually = async () => {
+    if (!targetFolderIdForNewApp) return;
+    setIsAppPickerOpen(false);
+    await handleAddApplication(targetFolderIdForNewApp);
+  };
+
   const handleRemoveApplication = async (folderId: string, appId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Hapus aplikasi ini dari folder?")) {
@@ -284,24 +354,34 @@ function App() {
     <div className="min-h-screen w-screen bg-slate-950/80 backdrop-blur-win border border-win-border rounded-xl shadow-win p-6 text-win-text select-none flex flex-col font-segoe overflow-y-auto">
       
       {/* Header & Search */}
-      <header className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
+      <header data-tauri-drag-region className="mb-6 flex items-center justify-between cursor-move select-none">
+        <div data-tauri-drag-region className="flex items-center gap-3">
+          <div data-tauri-drag-region className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
             TN
           </div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">TaskNest</h1>
+          <h1 data-tauri-drag-region className="text-lg font-semibold tracking-tight text-white">TaskNest</h1>
         </div>
         
-        <button 
-          onClick={() => setIsEditMode(!isEditMode)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
-            isEditMode 
-              ? "bg-blue-600 border-blue-500 text-white" 
-              : "bg-win-hover border-win-border hover:bg-win-active text-slate-300"
-          }`}
-        >
-          {isEditMode ? "Selesai" : "Edit Folder"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+              isEditMode 
+                ? "bg-blue-600 border-blue-500 text-white" 
+                 : "bg-win-hover border-win-border hover:bg-win-active text-slate-300"
+            }`}
+          >
+            {isEditMode ? "Selesai" : "Edit Folder"}
+          </button>
+          
+          <button 
+            onClick={minimizeWindow}
+            className="p-1.5 rounded-lg bg-win-hover border border-win-border hover:bg-win-active text-slate-300 hover:text-white transition-all"
+            title="Minimize"
+          >
+            <Minus size={14} />
+          </button>
+        </div>
       </header>
 
       {/* Global Search Bar */}
@@ -593,7 +673,7 @@ function App() {
 
               {/* Add App Button */}
               <button 
-                onClick={() => handleAddApplication(activeFolder.id)}
+                onClick={() => handleOpenAppPicker(activeFolder.id)}
                 className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 transition-all active:scale-95"
               >
                 <Plus size={14} /> Tambah Aplikasi
@@ -670,6 +750,103 @@ function App() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== INSTALLED APP PICKER MODAL ==================== */}
+      <AnimatePresence>
+        {isAppPickerOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-sm rounded-2xl bg-slate-900 border border-win-border shadow-2xl p-5 flex flex-col max-h-[450px]"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-win-border mb-4">
+                <h3 className="text-sm font-semibold text-white">Pilih Aplikasi Windows</h3>
+                <button 
+                  onClick={() => setIsAppPickerOpen(false)}
+                  className="p-1 rounded-lg hover:bg-win-hover text-slate-400 hover:text-white transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* App Search Bar inside Modal */}
+              <div className="relative mb-3">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                  <Search size={14} />
+                </span>
+                <input
+                  type="text"
+                  placeholder="Cari aplikasi terinstal..."
+                  value={searchAppQuery}
+                  onChange={(e) => setSearchAppQuery(e.target.value)}
+                  className="w-full pl-8 pr-8 py-1.5 bg-slate-950 border border-win-border rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+                {searchAppQuery && (
+                  <button 
+                    onClick={() => setSearchAppQuery("")}
+                    className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-white"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Installed Apps List */}
+              <div className="flex-1 overflow-y-auto mb-4 pr-1 flex flex-col gap-1.5 min-h-[200px]">
+                {loadingApps ? (
+                  <div className="flex-1 flex items-center justify-center text-xs text-slate-400">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent mr-2"></div>
+                    Memindai aplikasi...
+                  </div>
+                ) : (
+                  (() => {
+                    const filteredApps = installedApps.filter(app => 
+                      app.name.toLowerCase().includes(searchAppQuery.toLowerCase())
+                    );
+                    
+                    if (filteredApps.length === 0) {
+                      return (
+                        <div className="flex-1 flex items-center justify-center text-xs text-slate-500 py-8">
+                          Tidak ada aplikasi yang ditemukan.
+                        </div>
+                      );
+                    }
+
+                    return filteredApps.map(app => (
+                      <div 
+                        key={app.path}
+                        onClick={() => handleSelectAppFromList(app)}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-win-hover cursor-pointer text-xs transition-colors border border-transparent hover:border-win-border"
+                      >
+                        {/* Letter Avatar icon */}
+                        <div className="h-6 w-6 rounded bg-slate-800 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 border border-win-border">
+                          {app.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex flex-col truncate flex-1">
+                          <span className="font-semibold text-slate-200 truncate">{app.name}</span>
+                          <span className="text-[9px] text-slate-500 truncate">{app.path}</span>
+                        </div>
+                      </div>
+                    ));
+                  })()
+                )}
+              </div>
+
+              {/* Manual Fallback */}
+              <div className="pt-3 border-t border-win-border flex gap-2">
+                <button
+                  onClick={handleAddAppManually}
+                  className="w-full py-2 bg-slate-950 hover:bg-win-hover border border-win-border text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  Pilih File Manual...
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

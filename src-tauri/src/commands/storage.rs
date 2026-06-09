@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use tauri::AppHandle;
-use tauri::path::BaseDirectory;
+use tauri::Manager;
 
 fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let path = app.path().app_local_data_dir()

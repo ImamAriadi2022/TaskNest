@@ -10,6 +10,7 @@ pub fn run() {
             commands::icon_extractor::extract_icon,
             commands::launcher::launch_app,
             commands::launcher::select_executable,
+            commands::launcher::get_installed_apps,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

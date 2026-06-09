@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppConfig } from "../types";
 
 // Check if we are running inside Tauri
@@ -110,6 +111,44 @@ export async function selectExecutable(): Promise<string | null> {
     // Web fallback: ask for mock path or return null
     const path = prompt("Masukkan path file executable/shortcut mock (Windows format):", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
     return path;
+  }
+}
+
+export interface InstalledApp {
+  name: string;
+  path: string;
+}
+
+export async function getInstalledApps(): Promise<InstalledApp[]> {
+  if (isTauri()) {
+    try {
+      return await invoke<InstalledApp[]>("get_installed_apps");
+    } catch (error) {
+      console.error("Failed to get installed apps:", error);
+      return [];
+    }
+  } else {
+    // Return mock apps in web context
+    return [
+      { name: "Google Chrome", path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" },
+      { name: "Visual Studio Code", path: "C:\\Users\\Mock\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe" },
+      { name: "Steam", path: "C:\\Program Files (x86)\\Steam\\Steam.exe" },
+      { name: "Notepad", path: "C:\\Windows\\notepad.exe" },
+      { name: "Discord", path: "C:\\Users\\Mock\\AppData\\Local\\Discord\\Update.exe" }
+    ];
+  }
+}
+
+export async function minimizeWindow(): Promise<void> {
+  if (isTauri()) {
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.minimize();
+    } catch (error) {
+      console.error("Failed to minimize window:", error);
+    }
+  } else {
+    console.log("Mock Minimize Window");
   }
 }
 

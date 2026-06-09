@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
-use windows::core::{Interface, HSTRING, PCWSTR};
-use windows::Win32_UI_Shell::{IShellLinkW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32_System_Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER, IPersistFile, STGM_READ};
-use windows::Win32_Graphics_Gdi::{
+use windows::core::{Interface, PCWSTR};
+use windows::Win32::UI::Shell::{IShellLinkW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+use windows::Win32::System::Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER, IPersistFile, STGM_READ};
+use windows::Win32::Graphics::Gdi::{
     GetDIBits, GetObjectW, CreateCompatibleDC, SelectObject, DeleteObject, DeleteDC,
-    BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HDC, HBITMAP
+    BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS
 };
-use windows::Win32_UI_WindowsAndMessaging::{GetIconInfo, DestroyIcon, HICON, PrivateExtractIconsW};
+use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, DestroyIcon, HICON, PrivateExtractIconsW};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use image::{ImageBuffer, Rgba};
 use std::io::Cursor;
@@ -17,7 +17,7 @@ pub fn resolve_lnk(lnk_path: &Path) -> Result<PathBuf, String> {
         let _ = CoInitialize(None);
         
         let shell_link: IShellLinkW = CoCreateInstance(
-            &windows::Win32_UI_Shell::ShellLink,
+            &windows::Win32::UI::Shell::ShellLink,
             None,
             CLSCTX_INPROC_SERVER,
         ).map_err(|e| format!("Failed to create ShellLink COM: {}", e))?;
@@ -46,8 +46,8 @@ pub fn resolve_lnk(lnk_path: &Path) -> Result<PathBuf, String> {
 // Convert HICON to Base64 PNG data URL
 pub fn hicon_to_base64(hicon: HICON) -> Result<String, String> {
     unsafe {
-        let mut icon_info = windows::Win32_UI_WindowsAndMessaging::ICONINFO::default();
-        if !GetIconInfo(hicon, &mut icon_info).as_bool() {
+        let mut icon_info = windows::Win32::UI::WindowsAndMessaging::ICONINFO::default();
+        if GetIconInfo(hicon, &mut icon_info).is_err() {
             return Err("Failed to get icon info".to_string());
         }
 
@@ -112,8 +112,8 @@ pub fn hicon_to_base64(hicon: HICON) -> Result<String, String> {
             DIB_RGB_COLORS,
         );
 
-        if old_obj != None {
-            SelectObject(hdc, old_obj);
+        if !old_obj.is_invalid() {
+            let _ = SelectObject(hdc, old_obj);
         }
 
         if lines_copied == 0 {
@@ -181,14 +181,17 @@ pub fn get_icon_from_path(path_str: &str) -> Result<String, String> {
         let mut hicon_array = [HICON::default(); 1];
         let mut icon_id_array = [0u32; 1];
         
+        let mut filename_buf = [0u16; 260];
+        let len = wide_target_path.len().min(260);
+        filename_buf[..len].copy_from_slice(&wide_target_path[..len]);
+
         let extracted_count = PrivateExtractIconsW(
-            PCWSTR(wide_target_path.as_ptr()),
+            &filename_buf,
             0,
             48, // Request 48x48 icon
             48,
-            Some(hicon_array.as_mut_ptr()),
+            Some(&mut hicon_array),
             Some(icon_id_array.as_mut_ptr()),
-            1,
             0,
         );
 
@@ -208,7 +211,7 @@ pub fn get_icon_from_path(path_str: &str) -> Result<String, String> {
 
         let result = SHGetFileInfoW(
             PCWSTR(wide_target_path.as_ptr()),
-            0,
+            windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(0),
             Some(&mut shfi as *mut SHFILEINFOW),
             size,
             flags,
