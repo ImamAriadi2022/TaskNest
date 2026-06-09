@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
   Plus, Search, Trash2, Edit, Star, X, ChevronLeft, ChevronRight,
-  FolderPlus, Folder, ArrowRight, CornerDownRight, Play
+  FolderPlus, ArrowRight, CornerDownRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
