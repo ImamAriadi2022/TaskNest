@@ -231,3 +231,9 @@ trait OptionExt<T> {
 impl<T> OptionExt<T> for Option<T> {
     fn ok_ok(self) -> Option<T> { self }
 }
+
+#[tauri::command]
+pub fn extract_icon(path: String) -> Result<String, String> {
+    get_icon_from_path(&path)
+}
+
